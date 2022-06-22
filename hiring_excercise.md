@@ -78,9 +78,15 @@ clicked_log table schema (Redshift table)
 
 
 ### Translating shortened url to fully url
-We are going to use the global secondary index from URL table on dynamoDB to find the full_url from short_url.
-It can be done by using AWS dynamoDB library to query the table with the short_url match condition.
+We are going to use the global secondary index from URL table on DynamoDB to find the full_url from short_url.
+It can be done by using AWS DynamoDB library to query the table with the short_url match condition.
 We can improve the performance by putting a memcached server to cache the query result with short_url as the key.
+
+### Preventing same url registration by same user
+For reducing the call to DynamoDB to check the uniqueness of full_url of each user,
+we use UPSERTS feature on DynamoDB.
+If the full_url is existing, then no update on its attributes and we only use the data that returned from DynamoDB.
+If the full_url doesn't exist, then we fallback to PutItem and create a new record for it.
 
 ### API Design
 The OpenApi spec for the service
@@ -100,13 +106,18 @@ basePath: "/v1"
 tags:
 - name: "short_url"
   description: "Operations about url"
+- name: "oauth2"
+  description: "Fetch access_token and refresh_token"
 schemes:
 - "https"
 security:
   - ApiKeyAuth: []
+  - BasicAuth: []
 paths:
   /short_urls:
     post:
+      security:
+        - ApiKeyAuth: []
       tags:
       - "short_url"
       summary: "Create URL"
@@ -122,12 +133,13 @@ paths:
           $ref: "#/components/schemas/URLRequest"
       responses:
         "200":
-          schema:
-            $ref: "#/components/schemas/URLResponse"
-          example:
-            full_url: "https://www.google.com"
-            short_url: "https://lin.ks/xCd5a"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/URLResponse"
     get:
+      security:
+        - ApiKeyAuth: []
       tags:
         - "short_url"
       summary: "Get list of shortened-url"
@@ -138,17 +150,21 @@ paths:
       parameters:
       responses:
         "200":
-          description: "successful operation"
-          schema:
-            type: "array"
-            items:
-              $ref: "#/components/schemas/URLResponse"
+          content:
+            application/json:
+              description: "successful operation"
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/URLResponse"
         "400":
           description: "Invalid URLname supplied"
         "404":
           description: "URL not found"
   /short_urls/{short_url_key}:
     put:
+      security:
+        - ApiKeyAuth: []
       tags:
         - "short_url"
       summary: "Updated URL"
@@ -170,14 +186,15 @@ paths:
           $ref: "#/components/schemas/URLRequest"
       responses:
         "200":
-          schema:
-            $ref: "#/components/schemas/URLResponse"
-          example:
-            full_url: "https://www.google.com"
-            short_url: "https://lin.ks/xCd5a"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/URLResponse"
         "400":
           description: "Invalid short_url_key supplied"
     delete:
+      security:
+        - ApiKeyAuth: []
       tags:
       - "short_url"
       summary: "Delete URL"
@@ -193,25 +210,91 @@ paths:
         type: "string"
       responses:
         "200":
-          schema:
-            $ref: "#/components/schemas/URLResponse"
-          example:
-            full_url: "https://www.google.com"
-            short_url: "https://lin.ks/xCd5a"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/URLResponse"
         "400":
           description: "Invalid short_url_key supplied"
+  /oauth2/token:
+    post:
+      security:
+        - BasicAuth: []
+      tags:
+      - "oauth2"
+      summary: "fetch access_token"
+      operationId: "fetchAccessToken"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Created URL object"
+        required: true
+        schema:
+          type: object
+          properties:
+            refresh_token:
+              type: string
+              example: refresh_token
+              description: |
+                required if grant_type is refresh_token
+            grant_type:
+              type: string
+              enum:
+                - client_credentials
+                - refresh_token
+              example: refresh_token
+            client_id:
+              type: string
+              example: client_id
+              description: |
+                required if grant_type is client_credentials
+          required:
+            - grant_type
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    example: access_token
+                  refresh_token:
+                    type: string
+                    example: refresh_token
+                  expires_in:
+                    type: number
+                    example: 3600
+                  token_type:
+                    type: string
+                    example: Bearer
+                required:
+                  - access_token
+                  - refresh_token
+                  - expires_in
+                  - token_type
 components:
   securitySchemes:
     ApiKeyAuth:
       type: "apiKey"
       name: "Authorization"
       in: "header"
+    BasicAuth:
+      type: http
+      scheme: basic
   schemas:
     URLRequest:
       type: "object"
       properties:
         full_url:
           type: "string"
+      required:
+        - full_url
+      example:
+        full_url: "https://www.google.com"
     URLResponse:
       type: "object"
       properties:
@@ -219,6 +302,12 @@ components:
           type: "string"
         short_url:
           type: "string"
+      required:
+        - full_url
+        - short_url
+      example:
+        full_url: "https://www.google.com"
+        short_url: "https://lin.ks/xCd5a"
 ```
 
 ### User authentication for API
@@ -227,10 +316,12 @@ The access_token is in JWT format that includes the user_id information.
 User need to include the access_token to the `Authorization` header for each API request,
 so that API Gateway can verify the request using JWT Authorizer lambda.
 If the authorizer can validate the JWT then it'll pass the request to API lambda including JWT header. Otherwise, it'll deny the request.
-In the API lambda, we can decode the JWT to extract the user_id to CRUD on url data on dynamoDB.
-By extracting the user_id information from JWT we can skip querying the user table on dynamoDB which can make our app faster.
+In the API lambda, we can decode the JWT to extract the user_id to CRUD on url data on DynamoDB.
+By extracting the user_id information from JWT we can skip querying the user table on DynamoDB which can make our app faster.
 
 The access_token has an expiration date and need to be refreshed using refresh token.
+The spec for fetching these token is defined in `/oauth2/token` endpoint.
+User need to pass the basic auth using client_id and client_credentials provided.
 
 ### Reporting function
 We record the log everytime a user clicks the shortened-url and store it as a record on Redshift.
@@ -240,6 +331,8 @@ From there we can query the aggregation of total number of clicks, number of cli
 ## Technology stack
 - Lambda with nodejs
 - Serverless Framework
+- fingerprintjs library
+- short_unique_id library
 - API Gateway
 - DynamoDB
 - AWS Redshift
@@ -252,9 +345,16 @@ gantt
     dateFormat  YYYY-MM-DD
     excludes Saturday, Sunday, 2022-07-04, 2022-07-05
     section Section
-    Authorizer lambda dev           :a1, 2022-06-23, 1d
+    Authorizer lambda dev           :a1, 2022-06-24, 1d
     URL-shorterner CRUD lambda dev   :a2, after a1, 4d
     URL retriever lambda dev   :a3, after a2, 2d
     Infra setup                      :a4, after a3, 2d
     Testing, pre-release              :a5, after a4, 2d
 ```
+
+### Some Assumptions I made
+- How user get signed up? How user know their credentials?
+  Because  we don't have any web interface at the moment, I assume that user get registered manually by the admin of system.
+  Admin then share the API credentials to user using email or phone.
+- We only track link clicked on browser, redirection happened outside the browser is out of the scope of tracking
+- No rapid growing on the number of users, so we want a cheapest infrastructure configuration.

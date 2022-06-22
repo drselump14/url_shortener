@@ -13,13 +13,18 @@ basePath: "/v1"
 tags:
 - name: "short_url"
   description: "Operations about url"
+- name: "oauth2"
+  description: "Fetch access_token and refresh_token"
 schemes:
 - "https"
 security:
   - ApiKeyAuth: []
+  - BasicAuth: []
 paths:
   /short_urls:
     post:
+      security:
+        - ApiKeyAuth: []
       tags:
       - "short_url"
       summary: "Create URL"
@@ -35,12 +40,13 @@ paths:
           $ref: "#/components/schemas/URLRequest"
       responses:
         "200":
-          schema:
-            $ref: "#/components/schemas/URLResponse"
-          example:
-            full_url: "https://www.google.com"
-            short_url: "https://lin.ks/xCd5a"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/URLResponse"
     get:
+      security:
+        - ApiKeyAuth: []
       tags:
         - "short_url"
       summary: "Get list of shortened-url"
@@ -51,17 +57,21 @@ paths:
       parameters:
       responses:
         "200":
-          description: "successful operation"
-          schema:
-            type: "array"
-            items:
-              $ref: "#/components/schemas/URLResponse"
+          content:
+            application/json:
+              description: "successful operation"
+              schema:
+                type: "array"
+                items:
+                  $ref: "#/components/schemas/URLResponse"
         "400":
           description: "Invalid URLname supplied"
         "404":
           description: "URL not found"
   /short_urls/{short_url_key}:
     put:
+      security:
+        - ApiKeyAuth: []
       tags:
         - "short_url"
       summary: "Updated URL"
@@ -83,14 +93,15 @@ paths:
           $ref: "#/components/schemas/URLRequest"
       responses:
         "200":
-          schema:
-            $ref: "#/components/schemas/URLResponse"
-          example:
-            full_url: "https://www.google.com"
-            short_url: "https://lin.ks/xCd5a"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/URLResponse"
         "400":
           description: "Invalid short_url_key supplied"
     delete:
+      security:
+        - ApiKeyAuth: []
       tags:
       - "short_url"
       summary: "Delete URL"
@@ -106,25 +117,91 @@ paths:
         type: "string"
       responses:
         "200":
-          schema:
-            $ref: "#/components/schemas/URLResponse"
-          example:
-            full_url: "https://www.google.com"
-            short_url: "https://lin.ks/xCd5a"
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/URLResponse"
         "400":
           description: "Invalid short_url_key supplied"
+  /oauth2/token:
+    post:
+      security:
+        - BasicAuth: []
+      tags:
+      - "oauth2"
+      summary: "fetch access_token"
+      operationId: "fetchAccessToken"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Created URL object"
+        required: true
+        schema:
+          type: object
+          properties:
+            refresh_token:
+              type: string
+              example: refresh_token
+              description: |
+                required if grant_type is refresh_token
+            grant_type:
+              type: string
+              enum:
+                - client_credentials
+                - refresh_token
+              example: refresh_token
+            client_id:
+              type: string
+              example: client_id
+              description: |
+                required if grant_type is client_credentials
+          required:
+            - grant_type
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  access_token:
+                    type: string
+                    example: access_token
+                  refresh_token:
+                    type: string
+                    example: refresh_token
+                  expires_in:
+                    type: number
+                    example: 3600
+                  token_type:
+                    type: string
+                    example: Bearer
+                required:
+                  - access_token
+                  - refresh_token
+                  - expires_in
+                  - token_type
 components:
   securitySchemes:
     ApiKeyAuth:
       type: "apiKey"
       name: "Authorization"
       in: "header"
+    BasicAuth:
+      type: http
+      scheme: basic
   schemas:
     URLRequest:
       type: "object"
       properties:
         full_url:
           type: "string"
+      required:
+        - full_url
+      example:
+        full_url: "https://www.google.com"
     URLResponse:
       type: "object"
       properties:
@@ -132,3 +209,9 @@ components:
           type: "string"
         short_url:
           type: "string"
+      required:
+        - full_url
+        - short_url
+      example:
+        full_url: "https://www.google.com"
+        short_url: "https://lin.ks/xCd5a"
