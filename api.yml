@@ -1,0 +1,134 @@
+openapi: "3.0.1"
+info:
+  description: "URL shortener API"
+  version: "1.0.0"
+  title: "URL shortener API"
+  contact:
+    email: "cakmet14@gmail.com"
+  license:
+    name: "Apache 2.0"
+    url: "http://www.apache.org/licenses/LICENSE-2.0.html"
+host: "lin.ks"
+basePath: "/v1"
+tags:
+- name: "short_url"
+  description: "Operations about url"
+schemes:
+- "https"
+security:
+  - ApiKeyAuth: []
+paths:
+  /short_urls:
+    post:
+      tags:
+      - "short_url"
+      summary: "Create URL"
+      operationId: "createURL"
+      produces:
+      - "application/json"
+      parameters:
+      - in: "body"
+        name: "body"
+        description: "Created URL object"
+        required: true
+        schema:
+          $ref: "#/components/schemas/URLRequest"
+      responses:
+        "200":
+          schema:
+            $ref: "#/components/schemas/URLResponse"
+          example:
+            full_url: "https://www.google.com"
+            short_url: "https://lin.ks/xCd5a"
+    get:
+      tags:
+        - "short_url"
+      summary: "Get list of shortened-url"
+      description: ""
+      operationId: "getURLByName"
+      produces:
+      - "application/json"
+      parameters:
+      responses:
+        "200":
+          description: "successful operation"
+          schema:
+            type: "array"
+            items:
+              $ref: "#/components/schemas/URLResponse"
+        "400":
+          description: "Invalid URLname supplied"
+        "404":
+          description: "URL not found"
+  /short_urls/{short_url_key}:
+    put:
+      tags:
+        - "short_url"
+      summary: "Updated URL"
+      description: "This can only be done by the logged in URL."
+      operationId: "updateURL"
+      produces:
+      - "application/json"
+      parameters:
+      - name: "short_url_key"
+        in: "path"
+        description: "name that need to be updated"
+        required: true
+        type: "string"
+      - in: "body"
+        name: "body"
+        description: "Updated URL object"
+        required: true
+        schema:
+          $ref: "#/components/schemas/URLRequest"
+      responses:
+        "200":
+          schema:
+            $ref: "#/components/schemas/URLResponse"
+          example:
+            full_url: "https://www.google.com"
+            short_url: "https://lin.ks/xCd5a"
+        "400":
+          description: "Invalid short_url_key supplied"
+    delete:
+      tags:
+      - "short_url"
+      summary: "Delete URL"
+      description: "This can only be done by the logged in URL."
+      operationId: "deleteURL"
+      produces:
+      - "application/json"
+      parameters:
+      - name: "short_url_key"
+        in: "path"
+        description: "The name that needs to be deleted"
+        required: true
+        type: "string"
+      responses:
+        "200":
+          schema:
+            $ref: "#/components/schemas/URLResponse"
+          example:
+            full_url: "https://www.google.com"
+            short_url: "https://lin.ks/xCd5a"
+        "400":
+          description: "Invalid short_url_key supplied"
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: "apiKey"
+      name: "Authorization"
+      in: "header"
+  schemas:
+    URLRequest:
+      type: "object"
+      properties:
+        full_url:
+          type: "string"
+    URLResponse:
+      type: "object"
+      properties:
+        full_url:
+          type: "string"
+        short_url:
+          type: "string"
